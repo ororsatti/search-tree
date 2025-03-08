@@ -1,5 +1,15 @@
-search: main.c dist
-	gcc main.c -o dist/search -Wall -Wextra
+CC=gcc
+CFLAGS=-Wall -Wextra -ggdb
+DEST_DIR=dest
+EXEC_NAME=search
+MODULES=radix.o
 
-dist:
-	mkdir dist
+mainapp: main.o $(MODULES) $(DEST_DIR)
+	$(CC) $(CFLAGS) main.o $(MODULES) -o $(DEST_DIR)/$(EXEC_NAME)
+	rm *.o
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $^
+
+$(DEST_DIR):
+	mkdir $(DEST_DIR)
