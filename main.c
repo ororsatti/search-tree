@@ -1,21 +1,15 @@
+#include "libsi.h"
 #include "radix.h"
+#include "utarray.h"
 #include <stdio.h>
 
 void test_search()
 {
 
-    node_t* root3 = NULL;
-    char* words[] = {
-        "bored",
-        "boring",
-        "bow",
-        "bold",
-        "boringly"
-    };
+    radix_node* root3 = NULL;
+    char* doc = "bored boring bored building bow";
 
-    for (int i = 0; i < 5; i++) {
-        radix_add(&root3, words[i]);
-    }
+    si_add_document(&root3, "test", doc);
 
     UT_array* results = radix_init_results_array();
 
@@ -30,9 +24,11 @@ void test_search()
     }
     printf("\n");
 
-    radix_print(root3);
+    radix_node* t = radix_get(root3, "bored");
+    printf("%s\n", t->key);
     utarray_free(results);
-    radix_free(root3);
+    si_print(root3);
+    si_free(root3);
 }
 
 int main(void)

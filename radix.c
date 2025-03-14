@@ -1,6 +1,8 @@
 #include "radix.h"
+#include "utarray.h"
 #include "uthash.h"
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #define EMPTY_PREFIX ""
@@ -9,7 +11,6 @@
 UT_icd search_result_icd = { sizeof(search_result), NULL, NULL, NULL };
 
 // helpers
-
 int min(int a, int b, int c)
 {
     int t = (a < b) ? a : b;
@@ -39,7 +40,7 @@ void strrpt(char* p, char* c, int times)
     }
 }
 
-void str_cpy_partial(char* src, char* dest, int size)
+void str_cpy_partial(const char* src, char* dest, int size)
 {
     memcpy(dest, src, size);
     dest[size] = '\0';
@@ -62,35 +63,36 @@ size_t key_cmp(char* src, char* dest)
     return idx;
 }
 
-node_t* create_node(char* key, node_t* children)
+radix_node* create_node(char* key, radix_node* children)
 {
-    node_t* node = malloc(sizeof(node_t));
+    radix_node* node = malloc(sizeof(radix_node));
     strcpy(node->key, key);
     node->children = children;
 
     return node;
 }
 
-void add_child(node_t** parent, node_t* child)
+void add_child(radix_node** parent, radix_node* child)
 {
     HASH_ADD_STR(*parent, key, child);
 }
 
-node_t* create_leaf_node(char* node_key, node_t* children)
+radix_node* create_leaf_node(char* node_key, radix_node* children)
 {
-    node_t* node = create_node(node_key, children);
+    radix_node* node = create_node(node_key, children);
     add_child(&node->children, create_node(LEAF_NODE, NULL));
     return node;
 }
 
-node_t* radix_create_path(node_t** root, char* key)
+radix_node* radix_create_path(radix_node** root, char* key)
+
 {
-    node_t** map = root;
+    radix_node** map = root;
     size_t len = strlen(key), start = 0;
 
     for (size_t i = 1; i <= len; ++i) {
 
-        node_t *node, *tmp;
+        radix_node *node, *tmp;
         HASH_ITER(hh, *map, node, tmp)
         {
             size_t split_idx = key_cmp(key, node->key);
@@ -106,14 +108,9 @@ node_t* radix_create_path(node_t** root, char* key)
                 char parent_key[split_idx + 1];
                 str_cpy_partial(node->key, parent_key, split_idx);
 
-                printf("in: %s %s\n", parent_key, &node->key[split_idx]);
                 // create a new branch
-                node_t* intermediate = create_node(parent_key, NULL);
+                radix_node* intermediate = create_node(parent_key, NULL);
                 add_child(map, intermediate);
-
-                // adding the new node (the key we want to insert)
-                add_child(&intermediate->children,
-                    create_leaf_node(&key[split_idx], NULL));
 
                 // re-adding the existing node (the one that we splitted)
                 add_child(&intermediate->children, create_node(&node->key[split_idx], node->children));
@@ -140,85 +137,14 @@ node_t* radix_create_path(node_t** root, char* key)
         return *map;
     }
 
-    node_t* node = create_leaf_node(key, NULL);
+    radix_node* node = create_leaf_node(key, NULL);
     add_child(map, node);
 
     return node;
 }
 
-node_t* radix_add(node_t** root, char* word)
-{
-    return radix_create_path(root, word);
-}
-
-node_t* radix_init_root()
-{
-    return NULL;
-}
-
-int radix_has(node_t* node, char* key)
-{
-
-    if (HASH_COUNT(node) == 0) {
-        return 0;
-    }
-
-    node_t* tmp;
-    HASH_FIND_STR(node, key, tmp);
-
-    return tmp != NULL;
-}
-
-void radix_print_recursive(node_t* root, size_t depth)
-{
-    char* padding = malloc(depth);
-    strrpt(padding, " ", depth);
-
-    node_t *item, *tmp;
-    HASH_ITER(hh, root, item, tmp)
-    {
-
-        if (strcmp(item->key, LEAF_NODE) == 0) {
-            continue;
-            printf(" !! ");
-        }
-
-        if (radix_has(item->children, LEAF_NODE)) {
-            printf("%s%s !!\n", padding, item->key);
-        } else {
-            printf("%s%s\n", padding, item->key);
-        }
-
-        if (HASH_COUNT(item->children) > 0) {
-            radix_print_recursive(item->children, depth + 1);
-        }
-    }
-    free(padding);
-}
-
-void radix_print(node_t* root)
-{
-    radix_print_recursive(root, 0);
-}
-
-void radix_free(node_t* root)
-{
-
-    node_t *item, *tmp;
-    HASH_ITER(hh, root, item, tmp)
-    {
-        if (HASH_COUNT(item->children) > 0) {
-            radix_free(item->children);
-        }
-
-        HASH_DEL(root, item);
-        free(item);
-    }
-}
-
 void calculate_relative_edit_distance(char* key, char* query, int* v0_copy, int pos)
 {
-
     int key_len = strlen(key);
     int query_len = strlen(query);
     int v1[query_len + 1];
@@ -243,8 +169,81 @@ void calculate_relative_edit_distance(char* key, char* query, int* v0_copy, int 
     }
 }
 
+radix_node* radix_add(radix_node** root, char* word)
+{
+    return radix_create_path(root, word);
+}
+
+radix_node* radix_init_root()
+{
+    return NULL;
+}
+radix_node* radix_get_child(radix_node* node, char* key)
+{
+    if (HASH_COUNT(node->children) == 0) {
+        return NULL;
+    }
+
+    radix_node* tmp;
+    HASH_FIND_STR(node->children, key, tmp);
+
+    return tmp;
+}
+
+int radix_has_child(radix_node* node, char* key)
+{
+    return radix_get_child(node, key) != NULL;
+}
+
+void radix_print_recursive(radix_node* root, size_t depth)
+{
+    char* padding = malloc(depth);
+    strrpt(padding, " ", depth);
+
+    radix_node *item, *tmp;
+    HASH_ITER(hh, root, item, tmp)
+    {
+
+        if (strcmp(item->key, LEAF_NODE) == 0) {
+            continue;
+            printf(" !! ");
+        }
+
+        if (radix_has_child(item, LEAF_NODE)) {
+            printf("%s%s !!\n", padding, item->key);
+        } else {
+            printf("%s%s\n", padding, item->key);
+        }
+
+        if (HASH_COUNT(item->children) > 0) {
+            radix_print_recursive(item->children, depth + 1);
+        }
+    }
+    free(padding);
+}
+
+void radix_print(radix_node* root)
+{
+    radix_print_recursive(root, 0);
+}
+
+void radix_free(radix_node* root)
+{
+
+    radix_node *item, *tmp;
+    HASH_ITER(hh, root, item, tmp)
+    {
+        if (HASH_COUNT(item->children) > 0) {
+            radix_free(item->children);
+        }
+
+        HASH_DEL(root, item);
+        free(item);
+    }
+}
+
 void radix_fuzzy_get_recursive(
-    node_t* node,
+    radix_node* node,
     char* query,
     char* prefix,
     int* v0,
@@ -253,7 +252,7 @@ void radix_fuzzy_get_recursive(
     UT_array* results)
 {
     int query_len = strlen(query);
-    node_t *el, *tmp;
+    radix_node *el, *tmp;
 
     HASH_ITER(hh, node, el, tmp)
     {
@@ -300,7 +299,7 @@ void radix_fuzzy_get_recursive(
 }
 
 void radix_fuzzy_get(
-    node_t* root,
+    radix_node* root,
     char* query,
     int distance,
     UT_array* results)
@@ -321,6 +320,33 @@ void radix_fuzzy_get(
         FIRST_MATRIX_ROW,
         distance,
         results);
+}
+
+radix_node* radix_get(radix_node* root, char* key)
+{
+    radix_node* result = NULL;
+    size_t key_len = strlen(key), start = 0;
+
+    for (size_t i = start + 1; i <= key_len; ++i) {
+        char partial[i - start + 1];
+
+        str_cpy_partial(key, partial, i - start);
+
+        radix_node* node = NULL;
+        HASH_FIND_STR(root, partial, node);
+
+        if (node == NULL) {
+            continue;
+        }
+
+        if (radix_has_child(node, LEAF_NODE)) {
+            return node;
+        }
+
+        result = radix_get(node->children, &key[i]);
+    }
+
+    return result;
 }
 
 UT_array* radix_init_results_array()
